@@ -13,17 +13,18 @@ WIDTH = 128
 HEIGHT = 64
 BORDER = 2
 
+
 class PumpingDisplay:
     def __init__(self):
         displayio.release_displays()
 
         # Use for I2C
         i2c = board.I2C()  # uses board.SCL and board.SDA
-        #i2c = board.STEMMA_I2C()  # For using the built-in STEMMA QT connector on a microcontroller
+        # i2c = board.STEMMA_I2C()  # For using the built-in STEMMA QT connector on a microcontroller
         display_bus = displayio.I2CDisplay(i2c, device_address=0x3C)
 
         self.display = adafruit_displayio_sh1107.SH1107(display_bus, width=WIDTH, height=HEIGHT, rotation=0)
-        
+
         # print("Done init PumpingDisplay")
 
     def initialize_display(self):
@@ -48,8 +49,8 @@ class PumpingDisplay:
         splash.append(inner_sprite)
         return splash
 
-
-    def display_status(self, address, water_level_state, program_start, pump_start, water_level_readers: list[WaterLevelReader], http_status:str):
+    def display_status(self, address, water_level_state, program_start, pump_start,
+                       water_level_readers: list[WaterLevelReader], http_status: str):
         main_group = self.initialize_display()
 
         text_area = label.Label(terminalio.FONT, text="Addr: " + address, color=0xFFFFFF, x=8, y=7)
@@ -58,17 +59,20 @@ class PumpingDisplay:
         text_area = label.Label(terminalio.FONT, text="State: " + water_level_state, color=0xFFFFFF, x=8, y=17)
         main_group.append(text_area)
 
-        water_level_status_display = water_level_readers[1].print_water_state()+" - "+water_level_readers[0].print_water_state()
+        water_level_status_display = (water_level_readers[1].print_water_state() + " - " +
+                                      water_level_readers[0].print_water_state())
         text_area = label.Label(terminalio.FONT, text=water_level_status_display, color=0xFFFFFF, x=8, y=27)
         main_group.append(text_area)
 
         text_area = label.Label(terminalio.FONT, text=http_status, color=0xFFFFFF, x=8, y=37)
         main_group.append(text_area)
 
-        text_area = label.Label(terminalio.FONT, text="Start "+self.formatElapsedMs(program_start), color=0xFFFFFF, x=8, y=47)
+        text_area = label.Label(terminalio.FONT, text="Start " + self.format_elapsed_ms(program_start),
+                                color=0xFFFFFF, x=8, y=47)
         main_group.append(text_area)
 
-        text_area = label.Label(terminalio.FONT, text="Pump "+self.formatElapsedMs(pump_start), color=0xFFFFFF, x=8, y=57)
+        text_area = label.Label(terminalio.FONT, text="Pump " + self.format_elapsed_ms(pump_start),
+                                color=0xFFFFFF, x=8, y=57)
         main_group.append(text_area)
 
     def display_error(self, error):
@@ -93,10 +97,10 @@ class PumpingDisplay:
             y += 10
             offset += width + 1
 
-
-    def formatElapsedMs(self, start):
+    @staticmethod
+    def format_elapsed_ms(start):
         # Get time and components
-        ms = time.monotonic()  - start
+        ms = time.monotonic() - start
         negative = ms < -1
         if negative:
             ms = ms * -1
@@ -106,20 +110,18 @@ class PumpingDisplay:
         hours = int(ms / 3600)
         ms = ms % 3600
         minutes = int(ms / 60)
-        ms = ms % 60
-        seconds = int(ms)
-        # ms = ms % 1000
-        # seconds = int(ms / 60)
-        #print("seconds  "+str(seconds))
+        # ms = ms % 60
+        # seconds = int(ms)
+        # print("seconds  "+str(seconds))
         out = ""
-        if (negative):
-              out = out+"-"
+        if negative:
+            out = out + "-"
         if days > 0:
-              out = out+str(days) + "d "
+            out = out + str(days) + "d "
         if hours > 0:
-              out = out+str(hours) + "h "
-        if (minutes > 0):
-              out = out+str(minutes) + "m "
-        #if (seconds > 0):
+            out = out + str(hours) + "h "
+        if minutes > 0:
+            out = out + str(minutes) + "m "
+        # if (seconds > 0):
         #      out = out+str(seconds) + "s "
         return out

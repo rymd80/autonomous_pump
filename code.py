@@ -11,9 +11,9 @@ from util.pump_controller import PumpController
 from util.pumping_display import PumpingDisplay
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
+
 debug = Debug()
 properties = Properties(debug)
-
 
 # print(str(dir(board)))
 
@@ -29,7 +29,7 @@ debug.print_debug("CircuitPython version " + str(os.uname().version))
 pump = PumpController(board.D12)
 
 # Create the three (bottom, middle, and top), water sensor controllers
-# Needs all the A pins, match bottm, middle, top sensors accord
+# Needs all the A pins, match bottom, middle, top sensors accord
 water_level_readers = [WaterLevelReader("Bottom", properties, board.D5, board.D5, debug),  # Bottom sensor
                        WaterLevelReader("Top", properties, board.D6, board.D6, debug)]  # Top sensor
 
@@ -40,8 +40,6 @@ pumping = PumpingController(properties, board.LED, pump, water_level_readers, de
 # response = pumping.remote_notifier.do_get("http://wifitest.adafruit.com/testwifi/index.html")
 # print("GET response "+response.text)
 
-this_address = pumping.remote_notifier.ip_address
-
 timer = Timer()
 
 program_start_time = time.monotonic()
@@ -49,11 +47,14 @@ pump_start_time = time.monotonic()
 pumping_state = "Not Started"
 loop_count = 0
 timer.start_time = None
+
+pumping.remote_notifier.do_hello()
 while True:
+    this_address = pumping.remote_notifier.ip_address
     # debug.print_debug("Timer elapsed " + str(timer.get_elapsed())+" -- is timing "+str(timer.is_timing()))
     loop_count += 1
     debug.check_debug_enable()
-    if (timer.is_timed_out()):
+    if timer.is_timed_out():
         # If the pump isn't functional, the server side will send out a notification after its timeout.
         # This if adds a second timeout. The incoming water rate is very slow.
         # An extra minute gives everything an extra chance to function as expected.
@@ -66,8 +67,8 @@ while True:
     try:
         pumping_state = pumping.check_water_level_state()
         http_status = "#%sC:%sE#:%d" % (
-        "{:,}".format(pumping.remote_notifier.transaction_count), pumping.remote_notifier.last_status_code,
-        pumping.remote_notifier.error_count)
+            "{:,}".format(pumping.remote_notifier.transaction_count), pumping.remote_notifier.last_status_code,
+            pumping.remote_notifier.error_count)
         if pumping_state == pumping.REMOTE_NOTIFIER_ERROR:
             display.display_error(pumping.error_string)
             time.sleep(20)
@@ -84,24 +85,26 @@ while True:
         elif pumping_state == pumping.PUMPING_TIMED_OUT:
             # timer.start_timer(pumping.seconds_to_wait_for_pumping_verification)
             display.display_error(
-                "Pumping verification timed out. Wait`                                                                `ing to check pump")
+               "Pumping verification timed out. Waiting to check pump")
             time.sleep(properties.defaults["sleep_seconds_timeout"])
             continue
         elif pumping_state == pumping.IDLE:
             timer.cancel_timer()
 
-        display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers, http_status)
+        display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers,
+                              http_status)
 
     except Exception as e:
         error = str(e)
+        pumping.remote_notifier.do_error_post("MAIN LOOP", "Error: " + pumping.remote_notifier.format_exception(e))
         display.display_error(error)
         print("ERROR: pumping failed. Error: %s" % error)
         pumping_state = "error"
         time.sleep(20)
-        display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers, "Err")
+        # display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers,
+        #                       "Err")
         continue
 
-    debug.print_debug("Pumping State: " + pumping_state)
+    # debug.print_debug("Pumping State: " + pumping_state)
 
     pumping.wait_for_water_level_state_change(debug, properties)
-
