@@ -48,7 +48,10 @@ pumping_state = "Not Started"
 loop_count = 0
 timer.start_time = None
 
-pumping.remote_notifier.do_hello()
+hello_reponse = pumping.remote_notifier.do_hello()
+if hello_reponse.status_code != 200:
+    debug.print_debug("hello error  " + hello_reponse.text)
+
 while True:
     this_address = pumping.remote_notifier.ip_address
     # debug.print_debug("Timer elapsed " + str(timer.get_elapsed())+" -- is timing "+str(timer.is_timing()))

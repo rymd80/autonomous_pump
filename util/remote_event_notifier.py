@@ -55,18 +55,18 @@ class RemoteEventNotifier:
         self.debug.print_debug("**ERROR*** Failed to get SocketPool")
 
     def connect(self):
-        if self.pool is None:
-            self.get_pool()
-
-        if self.pool is None:
-            self.ip_address = None
-            self.need_to_connect = True
-            self.last_status_code = "NO Pool"
-            return
-
         tries = 0
         self.ip_address = None
         while not self.ip_address and tries < 10:
+            if self.pool is None:
+                self.get_pool()
+
+            if not self.get_pool():
+                self.ip_address = None
+                self.need_to_connect = True
+                self.last_status_code = "NO Pool"
+                return
+
             self.debug.print_debug("\nConnecting to WiFi...")
             try:
                 self.requests = adafruit_requests.Session(self.pool, ssl.create_default_context())
@@ -84,7 +84,7 @@ class RemoteEventNotifier:
                 self.last_status_code = "NOT Connected"
                 self.last_error = self.format_exception(e)
                 self.need_to_connect = True
-                self.debug.print_debug("Connection Error:"+ str(e))
+                self.debug.print_debug("Connection Error:"+ self.last_error)
                 time.sleep(2)
                 gc.collect()
         self.debug.print_debug("**ERROR***  Didn't Connect!")
@@ -104,6 +104,13 @@ class RemoteEventNotifier:
                     "status_code": 0,
                     "text": "No Pool"
                 }
+
+            if not self.ping(self.properties.defaults["ping_ip"]):
+                return {
+                    "status_code": 0,
+                    "text": "Ping Failed"
+                }
+
             if self.ip_address is None:
                 self.need_to_connect = True
                 self.last_status_code = "Couldn't Connect"
@@ -112,11 +119,6 @@ class RemoteEventNotifier:
                     "text": "Couldn't Connect"
                 }
 
-            if not self.ping(self.properties.defaults["ping_ip"]):
-                return {
-                    "status_code": 0,
-                    "text": "Ping Failed"
-                }
             return {
                 "status_code": 200,
                 "text": "Connected"
@@ -129,27 +131,6 @@ class RemoteEventNotifier:
                 "status_code": 0,
                 "text": self.last_error
             }
-
-        # try:
-        #     ssid = self.properties.defaults["ssid"]
-        #     self.debug.print_debug(f"Connecting to {ssid}")
-        #     wifi.radio.connect(self.properties.defaults["ssid"], self.properties.defaults["password"])
-        #     self.ip_address = str(wifi.radio.ipv4_address)
-        # except Exception as e:
-        #     print ("WARNING: Didn't connect to Wi-Fi. Error: %s" % str(e) )
-        #     self.ip_address = "NOT FOUND"
-        #     raise e
-        # try:
-        #     pool = socketpool.SocketPool(wifi.radio)
-        #     for network in wifi.radio.start_scanning_():
-        #         self.debug.print_debug \
-        #             ("\t%s\t\tRSSI: %d\tChannel: %d" % (network.ssid, network.rssi, network.channel))
-        #     wifi.radio.stop_scanning_networks()
-        #     self.session =adafruit_requests.Session(pool, ssl.create_default_context())
-        #     return self.session
-        # except Exception as e:
-        #     print ("WARNING: Didn't create session. Error: %s" % str(e) )
-        #     raise e
 
     def do_hello(self):
         connect_response = self.check_connection()
@@ -348,7 +329,6 @@ class RemoteEventNotifier:
         # This is the point in the lifecyle where an event id is assigned.
         # We only go forward once we get the event id from the server
         self.debug.print_debug("send_ready_to_pump")
-        # TODO - at some poing (when doing another deployment, change read_ to ready_
         return self.do_post("ready_to_pump", pump_state, "None")
 
     def start_pumping(self, pump_state: str):
@@ -367,21 +347,26 @@ class RemoteEventNotifier:
         self.debug.print_debug("missed_pumping_verification")
         return self.do_post("missed_pumping_verification", pump_state, "None")
 
+    # If connect to Wi-Fi successful but ping fails, don't attempt Post or Get
     def ping(self, ip):
-        ping_ip = ipaddress.IPv4Address(ip)
-        tries = 0
-        while tries < 5:
-            ping = wifi.radio.ping(ip=ping_ip)
-            if ping is not None:
-                return True
-            else:
-                tries += 1
+        try:
+            ping_ip = ipaddress.IPv4Address(ip)
+            tries = 0
+            while tries < 5:
+                ping = wifi.radio.ping(ip=ping_ip)
+                if ping is not None:
+                    return True
+                else:
+                    tries += 1
 
-        self.last_error = "Ping Failed"
-        self.last_status_code = "Ping"
+            self.last_error = "Ping Failed"
+            self.last_status_code = "Ping Fail"
+        except Exception as e:
+            # To avoid over communicating, just return false, if we get exception
+            # If the connect to Wi-Fi failed, then this will fail as well
+            pass
 
         return False
 
     def format_exception(self, exc):
-        # types.FrameType
         return "".join(traceback.format_exception(None, exc, exc.__traceback__, limit=-1))
