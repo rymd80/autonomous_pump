@@ -1,4 +1,5 @@
 import time
+from traceback import format_exception
 
 import board
 import digitalio
@@ -6,7 +7,7 @@ import digitalio
 from util.debug import Debug
 from util.properties import Properties
 from util.pump_controller import PumpController
-from util.remote_event_notifier import RemoteEventNotifier
+from util.remote_event_notifier import success, RemoteEventNotifier
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 
@@ -51,7 +52,7 @@ class PumpingController:
         self.timer = Timer()
 
     def handle_remote_response(self, success_state, remote_response):
-        if self.remote_notifier.success(remote_response):
+        if success(remote_response):
             return success_state
         else:
             # If we get a remote error, always stop pumping.
@@ -140,7 +141,8 @@ class PumpingController:
                 #       If ack is not received within remote timeout period, a notification email or text is sent.
                 response = self.remote_notifier.send_status_handshake(self.last_pump_state, self.create_status_object())
 
-                self.debug.print_debug("remote_cmd return-code " + str(response.status_code) + " text " + response.text)
+                if hasattr(response, "status_code"):
+                    self.debug.print_debug("remote_cmd return-code " + str(response.status_code) + " text " + response.text)
 
                 remote_cmd = self.remote_notifier.remote_cmd  # remote_cmd is returned in server json.
 
@@ -175,8 +177,8 @@ class PumpingController:
                         self.PUMPING_STOPPED,
                         self.remote_notifier.send_stop_pumping_ack(self.last_pump_state))
             except Exception as e:
-                print("WARNING: Remote communication failed. Error: %s" % str(e))
-                self.remote_notifier.do_error_post("status handshake", str(e))
+                print("WARNING: Remote communication failed. Error: %s" % format_exception(e))
+                self.remote_notifier.do_error_post("status handshake", format_exception(e))
 
         # Timer starts when pumping starts.
         # Timer canceled as soon as the pumping verification happens

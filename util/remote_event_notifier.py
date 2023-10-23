@@ -15,6 +15,11 @@ from util.debug import Debug
 from util.properties import Properties
 
 
+def success(response):
+    if hasattr(response, "status_code"):
+        return 200 <= response["status_code"] < 300
+    return False
+
 class RemoteEventNotifier:
     def __init__(self, properties: Properties, debug: Debug):
         self.properties = properties
@@ -22,6 +27,7 @@ class RemoteEventNotifier:
         self.error_count = 0
         self.debug = debug
         self.requests = None
+        self.pool = None
         self.debug.print_debug("init in RemoteEventNotifier")
         self.ip_address = "None"
         self.event_id = "None"
@@ -32,7 +38,7 @@ class RemoteEventNotifier:
         self.need_to_connect = True
         self.last_action = None
         self.remote_cmd = None
-        # dies early if you can't connect to Wi-Fi, sets ip_address if connected
+        # dies early if ysou can't connect to Wi-Fi, sets ip_address if connected
 
         # If SocketPool wasn't successful, don't bother with hello
         # The code will keep trying to connect.
@@ -134,7 +140,7 @@ class RemoteEventNotifier:
 
     def do_hello(self):
         connect_response = self.check_connection()
-        if connect_response["status_code"] != 200:
+        if not success(connect_response):
             print(connect_response["text"])
             self.debug.print_debug(connect_response["text"])
             return connect_response
@@ -146,7 +152,10 @@ class RemoteEventNotifier:
                 response = self.requests.get(self.remote_url + "/component/hello")
                 print(response.text)
                 self.transaction_count += 1
-                return
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
             except Exception as e:
                 tries += 1
                 self.last_error = self.format_exception(e)
@@ -155,13 +164,6 @@ class RemoteEventNotifier:
                 time.sleep(3)
 
         self.do_error_post("hello", self.last_error)  # This will send self.last_error to remote
-
-    def success(self, response):
-        if isinstance(response.status_code, int):
-            return 200 <= response.status_code < 300
-        else:
-            self.do_error_post("checking success", "status code not int. status code: " + str(response.status_code))
-            return False
 
     def reset_id(self):
         if isinstance(self.event_id, int):
@@ -195,7 +197,10 @@ class RemoteEventNotifier:
                 # return (response.status_code,response.text)
                 self.last_status_code = str(response.status_code)
                 self.transaction_count += 1
-                return response
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
             except Exception as e:
                 tries += 1
                 self.last_error = self.format_exception(e)
@@ -215,11 +220,11 @@ class RemoteEventNotifier:
         # when the program starts, the water level can be in any kind of state,
         # this logic tries to synchronize some of the unknowns
 
-        self.debug.print_debug("POST")
-
         connect_response = self.check_connection()
-        if connect_response["status_code"] != 200:
+        if not success(connect_response):
             return connect_response
+
+        self.debug.print_debug("POST")
 
         headers = {'Content-Type': 'application/json'}
         post_body = {"action": api_action, "eventId": self.event_id, "pumpState": pump_state,
@@ -250,7 +255,10 @@ class RemoteEventNotifier:
 
                 self.last_status_code = str(response.status_code)
                 self.transaction_count += 1
-                return response
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
             except Exception as e:
                 tries += 1
                 self.last_error = self.format_exception(e)
@@ -268,11 +276,12 @@ class RemoteEventNotifier:
         }
 
     def do_get(self, api_verb: str):
-        self.debug.print_debug("GET")
 
         connect_response = self.check_connection()
-        if connect_response["status_code"] != 200:
+        if not success(connect_response):
             return connect_response
+
+        self.debug.print_debug("GET")
 
         url = '{}/component/mission?mission=Pump1Mission&component_id="{}"&event_id={}&verb={}}'.format(
             self.remote_url, self.properties.defaults["component_id"],self.event_id, api_verb)
@@ -286,7 +295,10 @@ class RemoteEventNotifier:
                 self.debug.print_debug("get return code " + str(response.status_code) + " text " + response.text)
                 self.last_status_code = str(response.status_code)
                 self.transaction_count += 1
-                return response
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
             except Exception as e:
                 tries += 1
                 self.last_error = self.format_exception(e)

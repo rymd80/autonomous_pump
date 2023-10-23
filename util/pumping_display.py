@@ -53,6 +53,9 @@ class PumpingDisplay:
                        water_level_readers: list[WaterLevelReader], http_status: str):
         main_group = self.initialize_display()
 
+        if address is None:
+            address = "None"
+
         text_area = label.Label(terminalio.FONT, text="Addr: " + address, color=0xFFFFFF, x=8, y=7)
         main_group.append(text_area)
 
@@ -99,6 +102,8 @@ class PumpingDisplay:
 
     @staticmethod
     def format_elapsed_ms(start):
+        if start is None:
+            return ""
         # Get time and components
         ms = time.monotonic() - start
         negative = ms < -1

@@ -1,5 +1,6 @@
 import os
 import time
+from traceback import format_exception
 
 import board
 
@@ -9,6 +10,7 @@ from util.debug import Debug
 from util.properties import Properties
 from util.pump_controller import PumpController
 from util.pumping_display import PumpingDisplay
+from util.remote_event_notifier import RemoteEventNotifier, success
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 
@@ -43,14 +45,17 @@ pumping = PumpingController(properties, board.LED, pump, water_level_readers, de
 timer = Timer()
 
 program_start_time = time.monotonic()
-pump_start_time = time.monotonic()
+pump_start_time = None
 pumping_state = "Not Started"
 loop_count = 0
 timer.start_time = None
 
-hello_reponse = pumping.remote_notifier.do_hello()
-if hello_reponse.status_code != 200:
-    debug.print_debug("hello error  " + hello_reponse.text)
+hello_response = pumping.remote_notifier.do_hello()
+if not success(hello_response):
+    if isinstance(hello_response, dict):
+        debug.print_debug("hello error  " + hello_response["text"])
+    # else:
+    #     debug.print_debug("hello error  " + str(hello_response))
 
 while True:
     this_address = pumping.remote_notifier.ip_address
@@ -98,7 +103,7 @@ while True:
                               http_status)
 
     except Exception as e:
-        error = str(e)
+        error = format_exception(e)
         pumping.remote_notifier.do_error_post("MAIN LOOP", "Error: " + pumping.remote_notifier.format_exception(e))
         display.display_error(error)
         print("ERROR: pumping failed. Error: %s" % error)
