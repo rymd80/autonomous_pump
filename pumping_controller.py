@@ -7,7 +7,7 @@ import digitalio
 from util.debug import Debug
 from util.properties import Properties
 from util.pump_controller import PumpController
-from util.remote_event_notifier import success, RemoteEventNotifier
+from util.remote_event_notifier import RemoteEventNotifier
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 
@@ -52,13 +52,16 @@ class PumpingController:
         self.timer = Timer()
 
     def handle_remote_response(self, success_state, remote_response):
-        if success(remote_response):
+        if self.remote_notifier.success(remote_response):
             return success_state
         else:
             # If we get a remote error, always stop pumping.
             # If water level is high enough, it will again try to pump.
             self.stop_pumping()
-            self.error_string = remote_response.text
+            try:
+                self.error_string = self.remote_notifier.get_response_text(remote_response)
+            except Exception as e:
+                None
             return self.REMOTE_NOTIFIER_ERROR
 
     def stop_pumping(self):
@@ -131,6 +134,10 @@ class PumpingController:
         self.debug.print_debug("check_state: last_pump_state[%s], pumping_started_flag[%s], pumping_verified[%s]" %
                                (self.last_pump_state, self.pumping_started_flag, self.pumping_verified_flag))
 
+        if self.remote_notifier.need_to_connect:
+            self.debug.print_debug("check_water_level connecting")
+            self.remote_notifier.connect()
+
         if not (self.last_pump_state == self.ENGAGE_PUMP or self.last_pump_state == self.PUMPING_VERIFIED):
             # Don't flood the server with pumping status
             try:
@@ -142,7 +149,7 @@ class PumpingController:
                 response = self.remote_notifier.send_status_handshake(self.last_pump_state, self.create_status_object())
 
                 if hasattr(response, "status_code"):
-                    self.debug.print_debug("remote_cmd return-code " + str(response.status_code) + " text " + response.text)
+                    self.debug.print_debug("remote_cmd return-code " + str(response.status_code) + " text " + self.remote_notifier.get_response_text(response))
 
                 remote_cmd = self.remote_notifier.remote_cmd  # remote_cmd is returned in server json.
 
@@ -276,7 +283,7 @@ class PumpingController:
             self.blink()
             return self.ENGAGE_PUMP
         except Exception as e:
-            self.error_string = str(e)
+            self.error_string = self.remote_notifier.format_exception(e)
             self.remote_notifier.do_error_post("check_water_level_state", str(e))
             return self.REMOTE_NOTIFIER_ERROR
 
@@ -299,4 +306,5 @@ class PumpingController:
         while last_water_level_state == water_level_state and not timer.is_timed_out():
             time.sleep(1)
             water_level_state = self.get_water_state(self.pumping_started_flag, self.pumping_verified_flag)
+
         debug.print_debug("End wait")

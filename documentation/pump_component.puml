@@ -12,16 +12,18 @@ package "Feather" {
     [D6]
     [D12]
    }
-    node "Python program"{
-       node "pumping_controller" {
+    node "Python main program"{
+       [pumping_controller]
+       node "Python Classes" {
        [remote_event_notifier]
+       [http_functions]
        [pump_controller]
        [water_level]
        }
     }
-  [pump_controller] -up-> [D12]:Programmatic\nOn/Off
-  [water_level] -up-> [D5]:Programmatic\n"Wet"/"Dry"
-  [water_level] -up-> [D6]:Programmatic\n"Wet"/"Dry"
+  [pump_controller] -up-> [D12]:On/Off\nPower
+  [water_level] <--up- [D5]:"Wet/Dry\nReading"
+  [water_level] <--up- [D6]:"Wet/Dry\nReading"
 }
 
 package "Spring Boot\nRest Server" {
@@ -32,12 +34,20 @@ package "Spring Boot\nRest Server" {
 database "Physical Switch/Sensors" {
    [D12]--> [Relay Switch]:Wired
    [Relay Switch]--> [Pump]:Wired
-   [Top Water Sensor] --> [D6]:Wired
-   [Bottom Water Sensor]--> [D5]:Wired
+   [D6] <-- [Top Water Sensor]:Wired
+   [D5] <-- [Bottom Water Sensor]:Wired
 }
-[remote_event_notifier] --down-> [SpringBoot Java Application]:HTTP POST/GET
-[Top Water Sensor] --down-> [Water Reservoir]:Inside
-[Bottom Water Sensor] --down-> [Water Reservoir]:Inside
+
+[pumping_controller] <--> [remote_event_notifier]
+[pumping_controller] --> [pump_controller]:Programmatic\nOn/Off
+[pumping_controller] <-- [water_level]:Programmatic\nDry/Wet
+
+[external_water_source]  --> [Water Reservoir]:Tubing
+
+[remote_event_notifier] <--down-> [http_functions]
+[http_functions] <--down-> [SpringBoot Java Application]:HTTP POST/GET
+[Top Water Sensor] <--down- [Water Reservoir]:Sensor\nPhysically\nInside\nReservoir
+[Bottom Water Sensor] <-down- [Water Reservoir]:Sensor\nPhysically\nInside\nReservoir
 [Water Reservoir] --down-> [Pump]:Tubing
 [Pump] ---> [Drain]:Tubing
 @enduml

@@ -10,7 +10,7 @@ from util.debug import Debug
 from util.properties import Properties
 from util.pump_controller import PumpController
 from util.pumping_display import PumpingDisplay
-from util.remote_event_notifier import RemoteEventNotifier, success
+from util.remote_event_notifier import RemoteEventNotifier
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 
@@ -51,7 +51,7 @@ loop_count = 0
 timer.start_time = None
 
 hello_response = pumping.remote_notifier.do_hello()
-if not success(hello_response):
+if not pumping.remote_notifier.success(hello_response):
     if isinstance(hello_response, dict):
         debug.print_debug("hello error  " + hello_response["text"])
     # else:
@@ -78,7 +78,7 @@ while True:
             "{:,}".format(pumping.remote_notifier.transaction_count), pumping.remote_notifier.last_status_code,
             pumping.remote_notifier.error_count)
         if pumping_state == pumping.REMOTE_NOTIFIER_ERROR:
-            display.display_error(pumping.error_string)
+            display.display_error("Remote: "+pumping.error_string)
             time.sleep(20)
             # This is a hard error. Getting an event id is required.
             # Restart the pumping life cycle, go back to idle
@@ -86,9 +86,12 @@ while True:
             timer.cancel_timer()
         elif pumping_state == pumping.ENGAGE_PUMP or pumping_state == pumping.PUMPING_VERIFIED:
             if not timer.is_timing():
+                # We want to change display on the first pumping loop only
+                display.display_status(this_address, pumping_state, program_start_time, pump_start_time,
+                                       water_level_readers,
+                                       http_status)
                 timer.start_timer(properties.defaults["sleep_seconds_timeout"])
-            pump_start_time = time.monotonic()
-            # time.sleep(1) # When pumping, check water status often as the pump removes water quickly
+                pump_start_time = time.monotonic()
             continue
         elif pumping_state == pumping.PUMPING_TIMED_OUT:
             # timer.start_timer(pumping.seconds_to_wait_for_pumping_verification)
@@ -103,12 +106,13 @@ while True:
                               http_status)
 
     except Exception as e:
-        error = format_exception(e)
-        pumping.remote_notifier.do_error_post("MAIN LOOP", "Error: " + pumping.remote_notifier.format_exception(e))
+        error = pumping.remote_notifier.format_exception(e)
+        pumping.remote_notifier.do_error_post("MAIN LOOP", "Error: " + error)
+        debug.print_debug("Exception in main: "+error)
         display.display_error(error)
         print("ERROR: pumping failed. Error: %s" % error)
         pumping_state = "error"
-        time.sleep(20)
+        time.sleep(10)
         # display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers,
         #                       "Err")
         continue

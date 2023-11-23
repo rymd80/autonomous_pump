@@ -53,8 +53,8 @@ class WaterLevelReaderAnalog:
         self.properties = properties
 
         # "Other" water level sensors
-        # self.water_enable = digitalio.DigitalInOut(enable_pin)
-        # self.water_enable.switch_to_output()
+        self.water_enable = digitalio.DigitalInOut(enable_pin)
+        self.water_enable.switch_to_output()
         self.water_level_sensor = analogio.AnalogIn(water_level_pin)
 
         self.empty_value = properties.defaults["water_levels"][name]
@@ -70,12 +70,12 @@ class WaterLevelReaderAnalog:
         self.wet_level = wet
 
     def get_water_level(self):
-        # self.water_enable.value = True
+        self.water_enable.value = True
         millivolts = int(self.water_level_sensor.value * (self.water_level_sensor.reference_voltage * 1000 / 65535))
         self.water_level = self.water_level_sensor.value
         self.debug.print_debug("milli volts "+str(millivolts))
         self.debug.print_debug("water_level "+str(self.water_level))
-        # self.water_enable.value = False
+        self.water_enable.value = False
         return self.water_level
 
     def get_water_state(self):
@@ -84,7 +84,7 @@ class WaterLevelReaderAnalog:
         # self.debug.print_debug("Before getting water state "+str(level))
         if level >= self.dry_level:
             water_state = self.DRY
-        self.debug.print_debug(
+        self.debug.print_debug("get_water_state: "+
             self.name + " level value [" + str(self.empty_value) + "/" + str(self.water_level) + "] state " + str(
                 water_state))
         # self.debug.print_debug("After getting water state "+water_state)
