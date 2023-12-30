@@ -62,14 +62,32 @@ while True:
     button_value = buttons.button_pushed()
     if button_value >= 0:
         if button_value == 0:
+            debug.print_debug("code", "button 0 pressed -- set remote status")
             display.display_remote("status")
             pumping.remote_notifier.send_status_handshake(pumping.pump_state, pumping.create_status_object())
-            display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
-                                   program_start_time, pump_start_time, water_level_readers)
-        if button_value > 0:
+        elif button_value ==1:
+            debug.print_debug("code", "button 1 pressed -- turn pump on for 10 seconds")
+            display.display_messages(["pump on"])
+            pump_timer = Timer()
+            pump_timer.start_timer(30) # Will run pump max of 30 seconds (or when empty)
             pump.pump_on()
-            time.sleep(10)
-            pump.pump_on()
+            while True:
+                if not water_level_readers[0].water_present() and not water_level_readers[1].water_present():
+                    break
+                if pump_timer.is_timed_out():
+                    break
+                time.sleep(.1)
+            pump.pump_off()
+            display.display_messages(["pump off"])
+            time.sleep(5)
+        elif button_value ==2:
+            debug.print_debug("code", "button 2 pressed - toggle debug stage")
+            # Toggles debug flag (without reloading program)
+            debug.toggle_local_debug()
+            display.display_messages(["local-debug "+str(debug.local_set),"debug "+str(debug.debug)])
+            time.sleep(5)
+        display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
+                               program_start_time, pump_start_time, water_level_readers)
 
     loop_count += 1
     debug.check_debug_enable()

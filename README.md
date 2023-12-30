@@ -21,18 +21,22 @@ It uses three water level measurement sensors for added datapoints to help valid
 
 ![Pump state diagram](documentation/pump-state-diagram.png?raw=true)
 
-## Liquid Level Sensor
-(Liquid Level Sensor Switch (Single Float) SPST-NO Output Panel Mount, M8 Thread)
-
-
-![Pump wiring diagram](documentation/59630-1-T-02-A.jpg?raw=true)
-
-## Pump
-![Pump](documentation/51wQLqJQSUL._AC_SX569_.jpg?raw=true)
-
 ## Hardware diagram
 (The FeatherWing is stacked on ESP32-S2 so there isn't any wiring between them)
 ![Pump wiring diagram](documentation/pump_Sketch_bb.jpg?raw=true)
+
+## Test Harness Hardware diagram
+(The FeatherWing is stacked on ESP32-S2 so there isn't any wiring between them)
+The switches are used to simulate reed switch activation to step through the pumping states.
+![Pump wiring diagram](documentation/Test_pump Sketch_bb.jpg?raw=true)
+
+## Liquid Level Sensor
+(Liquid Level Sensor Switch (Single Float) SPST-NO Output Panel Mount, M8 Thread)
+![Pump wiring diagram](documentation/59630-1-T-02-A.jpg?raw=true)
+
+
+## Pump
+![Pump](documentation/51wQLqJQSUL._AC_SX569_.jpg?raw=true)
 
 ## HW List
 

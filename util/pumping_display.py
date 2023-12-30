@@ -121,6 +121,22 @@ class PumpingDisplay:
 
         self.display.root_group = main_group
 
+    def display_messages(self, messages: list[str]):
+        self.debug.print_debug("display","**** display_message_page")
+
+        main_group = self.initialize_display(True)
+
+        text_area = label.Label(terminalio.FONT, scale=2, text="Info", color=0xfa7e1e, x=8, y=20)
+        main_group.append(text_area)
+
+        offset = 0
+        y = 40
+        for message in messages:
+            text_area = label.Label(terminalio.FONT, scale=2, text=message, color=0x74d600, x=8, y=y)
+            main_group.append(text_area)
+            y += 20
+
+        self.display.show(main_group)
     def display_error(self, error):
         self.debug.print_debug("display","**** display_error: " + error)
 
@@ -257,6 +273,24 @@ class PumpingDisplay_i2c:
         main_group.append(text_area)
 
         self.display.show(main_group)
+
+    def display_messages(self, messages: list[str]):
+        self.debug.print_debug("display","**** display_message_page")
+
+        main_group = self.initialize_display()
+
+        text_area = label.Label(terminalio.FONT, text="Info", color=0xFFFFFF, x=8, y=7)
+        main_group.append(text_area)
+
+        offset = 0
+        y = 18
+        for message in messages:
+            text_area = label.Label(terminalio.FONT, text=message, color=0xFFFFFF, x=8, y=y)
+            main_group.append(text_area)
+            y += 10
+
+        self.display.show(main_group)
+
     def display_error(self, error):
         self.debug.print_debug("display","**** display_error: " + error)
 
