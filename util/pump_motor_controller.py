@@ -1,23 +1,22 @@
 import board
 import digitalio
+from util.debug import Debug
 
 
-class PumpController:
-    def __init__(self, pump_pin: board.pin):
+class PumpMotorController:
+    def __init__(self, pump_pin: board.pin, debug: Debug):
+        self.debug = debug
         self.relay = digitalio.DigitalInOut(pump_pin)
         self.relay.direction = digitalio.Direction.OUTPUT
         self.running = False
-        self.debug = False
         self.relay.value = False
 
     def pump_on(self):
         self.running = True
-        if self.debug:
-            print("Pump on")
+        self.debug.print_debug("pump", "Pump ON")
         self.relay.value = True
 
     def pump_off(self):
         self.running = False
-        if self.debug:
-            print("Pump off")
+        self.debug.print_debug("pump", "Pump OFF")
         self.relay.value = False

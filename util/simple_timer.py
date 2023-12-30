@@ -6,12 +6,15 @@ class Timer:
     def __init__(self):
         self.start_time = None
         self.max_seconds = None
-        self.running_time = None
 
     def start_timer(self, seconds: int):
         self.max_seconds = seconds
         self.start_time = int(time())
         # print("start_time",str(self.start_time))
+
+    def reset_timer(self, seconds: int):
+        self.max_seconds = seconds
+        self.start_time = int(time())
 
     def is_timing(self):
         return not (self.start_time is None)
@@ -20,10 +23,10 @@ class Timer:
         self.start_time = None
 
     def is_timed_out(self):
-        if self.start_time is None:
+        if self.start_time is None or self.max_seconds is None:
             return False
-        self.running_time = int(time()) - self.start_time
-        return self.running_time > self.max_seconds
+        running_time = int(time()) - self.start_time
+        return running_time > self.max_seconds
 
     def get_elapsed(self):
         if self.start_time is None:

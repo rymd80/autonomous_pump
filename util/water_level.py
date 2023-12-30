@@ -73,21 +73,21 @@ class WaterLevelReaderAnalog:
         self.water_enable.value = True
         millivolts = int(self.water_level_sensor.value * (self.water_level_sensor.reference_voltage * 1000 / 65535))
         self.water_level = self.water_level_sensor.value
-        self.debug.print_debug("milli volts "+str(millivolts))
-        self.debug.print_debug("water_level "+str(self.water_level))
+        self.debug.print_debug("water_level","milli volts "+str(millivolts))
+        self.debug.print_debug("water_level","water_level "+str(self.water_level))
         self.water_enable.value = False
         return self.water_level
 
     def get_water_state(self):
         water_state = self.WET
         level = self.get_water_level()
-        # self.debug.print_debug("Before getting water state "+str(level))
+        # self.debug.print_debug("water_level","Before getting water state "+str(level))
         if level >= self.dry_level:
             water_state = self.DRY
-        self.debug.print_debug("get_water_state: "+
+        self.debug.print_debug("water_level","get_water_state: "+
             self.name + " level value [" + str(self.empty_value) + "/" + str(self.water_level) + "] state " + str(
                 water_state))
-        # self.debug.print_debug("After getting water state "+water_state)
+        # self.debug.print_debug("water_level","After getting water state "+water_state)
         return water_state
 
     def water_present(self):

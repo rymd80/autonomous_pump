@@ -19,9 +19,9 @@ class Debug:
         self.debug = a_debug
         return a_debug
 
-    def is_debug(self):
+    def debug_enabled(self):
         return self.debug
 
-    def print_debug(self, message):
+    def print_debug(self, caller, message):
         if self.debug:
-            print("Debug: " + message)
+            print("[" + '%-10s' % caller + "] "+ message)
