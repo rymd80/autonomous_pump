@@ -30,6 +30,7 @@ It uses three water level measurement sensors for added datapoints to help valid
 
 ### The switches simulate the on/off of the reed switchs to simulate water level changes
 ### The red led simulates the pump being turned on/off
+### The test harness is connected to computer via USB for power and debug access.
 ![Pump test harness wiring diagram](documentation/test_pump_Sketch_bb.jpg?raw=true)
 
 ## Liquid Level Sensor
