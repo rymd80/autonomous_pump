@@ -112,7 +112,7 @@ class PumpingController:
             "bottom_sensor_level": self.water_level_readers[bottom].print_water_state()
         }
 
-    # Uses water level in the three water measurement sensors to return a water state
+    # Uses water level in the two water measurement sensors to return a water state
     def get_water_state(self, pumping_started, pumping_verified):
         bottom_has_water = self.water_level_readers[bottom].water_present()
         top_has_water = self.water_level_readers[top].water_present()
@@ -261,6 +261,8 @@ class PumpingController:
             self.remote_notifier.http.do_error_post("check_water_level_state", str(e))
             return self.REMOTE_NOTIFIER_ERROR
 
+    # Handles the high level remote calls to set pumping info the backend
+    # The remote call can take some time so the backend calls are timed to avoid interfere with the pumping.
     def notify_remote(self):
 
         did_remote_display = False
