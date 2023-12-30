@@ -32,7 +32,7 @@ buttons = Button([board.D0, board.D1, board.D2])
 # Can be any GPIO pin, match accordingly
 pump = PumpMotorController(board.D12, debug)
 
-# Create the three (bottom, middle, and top), water sensor controllers
+# Create the two water sensor controllers, (bottom, and top)
 # Needs all the A pins, match bottom, middle, top sensors accord
 if properties.defaults["wiring_option"] is None or properties.defaults["wiring_option"].lower() in ['2','t','test']:
     water_level_readers = [WaterLevelReader("Bottom", properties, board.D9, board.D9, debug),  # Bottom sensor
@@ -44,10 +44,6 @@ else:
 # Create the pumping controller
 pumping = PumpingController(display, properties, board.LED, pump, water_level_readers, debug)
 
-# response = pumping.remote_notifier.connect().get("http://wifitest.adafruit.com/testwifi/index.html")
-# response = pumping.remote_notifier.do_get("http://wifitest.adafruit.com/testwifi/index.html")
-# print("GET response "+response.text)
-
 pump_start_time = None
 pumping_state = "Not Started"
 loop_count = 0
@@ -58,8 +54,6 @@ hello_response = pumping.remote_notifier.http.do_hello()
 if not pumping.remote_notifier.http.success(hello_response):
     if isinstance(hello_response, dict):
         debug.print_debug("code","hello error  " + hello_response["text"])
-    # else:
-    #     debug.print_debug("hello error  " + str(hello_response))
 
 display_timer = Timer()
 
@@ -69,18 +63,14 @@ while True:
     if button_value >= 0:
         if button_value == 0:
             display.display_remote("status")
-            pumping.handle_remote_response(pumping.ENGAGE_PUMP,
-                                               pumping.remote_notifier.pump_event(pumping.ENGAGE_PUMP))
+            pumping.remote_notifier.send_status_handshake(pumping.pump_state, pumping.create_status_object())
             display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
                                    program_start_time, pump_start_time, water_level_readers)
         if button_value > 0:
-            print("pump on")
             pump.pump_on()
             time.sleep(10)
             pump.pump_on()
-            print("pump off")
-        # print("button "+str(button_value)+" pressed")
-    # debug.print_debug("Timer elapsed " + str(timer.get_elapsed())+" -- is timing "+str(timer.is_timing()))
+
     loop_count += 1
     debug.check_debug_enable()
     try:
