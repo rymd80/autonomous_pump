@@ -54,7 +54,9 @@ It uses three water level measurement sensors for added datapoints to help valid
 
 
 ## Current state of project
-The project is stable after the last refactoring. Part of the refactoring was so support running on a Adafruit ESP32-S2 Reverse TFT Feather.
+The project is stable after the last refactoring. Part of the refactoring was to support running on an Adafruit ESP32-S2 Reverse TFT Feather.
+
+The project will be switching to using the Adafruit ESP32-S2 Reverse TFT Feather.
 
 A settings.toml was added for some of the more private properties.
 
