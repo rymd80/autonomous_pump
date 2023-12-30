@@ -28,6 +28,7 @@ It uses three water level measurement sensors for added datapoints to help valid
 ## Test Harness Hardware diagram
 (The FeatherWing is stacked on ESP32-S2 so there isn't any wiring between them)
 The switches are used to simulate reed switch activation to step through the pumping states.
+### The switches simulate the on/off of the reed switchs to simulate water level changes
 ![Pump test harness wiring diagram](documentation/test_pump_Sketch_bb.jpg?raw=true)
 
 ## Liquid Level Sensor
