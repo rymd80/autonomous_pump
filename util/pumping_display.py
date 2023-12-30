@@ -132,6 +132,8 @@ class PumpingDisplay:
         offset = 0
         y = 40
         for message in messages:
+            if y > 120: # Allow display of 5 message lines to avoid going off page
+                break
             text_area = label.Label(terminalio.FONT, scale=2, text=message, color=0x74d600, x=8, y=y)
             main_group.append(text_area)
             y += 20
