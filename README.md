@@ -29,6 +29,7 @@ It uses three water level measurement sensors for added datapoints to help valid
 (The FeatherWing is stacked on ESP32-S2 so there isn't any wiring between them)
 
 ### The switches simulate the on/off of the reed switchs to simulate water level changes
+### The red led simulates the pump being turned on/off
 ![Pump test harness wiring diagram](documentation/test_pump_Sketch_bb.jpg?raw=true)
 
 ## Liquid Level Sensor
