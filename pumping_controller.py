@@ -53,12 +53,16 @@ class PumpingController:
         self.pump_state = None
         self.last_pump_state = None
         self.last_remote_cmd = None
+        self.last_pump_elapsed_time = None
         self.need_to_send_remote_pumping_started = False
+        self.pump_start_time = None
+        self.pump_event_count = 0
         self.remote_notifier = RemoteEventNotifier(properties, debug)
         self.timer = Timer()
         self.idle_timer = Timer()
         self.seconds_to_wait_for_pumping_verification = self.properties.defaults["seconds_to_wait_for_pumping_verification"]
         self.seconds_between_pumping_status_to_remote = self.properties.defaults["seconds_between_pumping_status_to_remote"]
+        self.seconds_to_pump_before_timeout = self.properties.defaults["seconds_to_pump_before_timeout"]
 
     def set_and_return_state(self, state):
         self.last_pump_state = self.pump_state
@@ -86,66 +90,56 @@ class PumpingController:
         self.pumping_verified_flag = False
         self.remote_notifier.http.reset_id()
 
-    def blink(self):
-        for times in range(0, 2):
-            # three quick blinks
-            for blink in range(0, 4):
-                self.led.value = True
-                time.sleep(0.05)
-                self.led.value = False
-                time.sleep(0.05)
-
-            # one longer blink
-            self.led.value = True
-            time.sleep(0.5)
-            self.led.value = False
-            time.sleep(0.1)
-
     def create_status_object(self):
-        water_level_state = self.get_water_state(self.pumping_started_flag, self.pumping_verified_flag)
+        water_level_state = self.get_water_state_action()
         return {
+            "pump_state": self.pump_state,
             "water_level_state": water_level_state,
-            "pump_running": str(self.pump.running),
             "pumping_started_flag": str(self.pumping_started_flag),
-            "pumping_verified": str(self.pumping_verified_flag),
+            "pumping_verified_flag": str(self.pumping_verified_flag),
             "top_sensor_level": self.water_level_readers[top].print_water_state(),
-            "bottom_sensor_level": self.water_level_readers[bottom].print_water_state()
+            "bottom_sensor_level": self.water_level_readers[bottom].print_water_state(),
+            "last_pump_elapsed_time": self.last_pump_elapsed_time,
+            "pump_event_count": self.pump_event_count,
+            "last_http_code": self.remote_notifier.http.last_status_code,
+            "last_http_error": self.remote_notifier.http.last_error
         }
 
-    # Uses water level in the two water measurement sensors to return a water state
-    def get_water_state(self, pumping_started, pumping_verified):
+    # Uses water level in the two water measurement sensors to return a water state action
+    # This method is highly coupled with check_water_level_state to walk through the pumping lifecycle
+    def get_water_state_action(self):
         bottom_has_water = self.water_level_readers[bottom].water_present()
         top_has_water = self.water_level_readers[top].water_present()
 
         if not bottom_has_water and not top_has_water:
             return self.IDLE
 
-        elif not pumping_started and bottom_has_water and not top_has_water:
+        elif not self.pumping_started_flag and bottom_has_water and not top_has_water:
             return self.READY_TO_PUMP
 
         # Once the pumping_started flag look for the bottom to have water, but the top doesn't have water.
         # This state verifies the pump is working.
         # NOTE: We use the flag pumping_verified to allow the next elif to get executed after the verification
-        elif not pumping_verified and pumping_started and bottom_has_water and not top_has_water:
+        elif not self.pumping_verified_flag and self.pumping_started_flag and bottom_has_water and not top_has_water:
             return self.PUMPING_VERIFIED
 
         # Once the pumping_started flag set, we stay pumping until the bottom water_level has no water
-        elif not pumping_started and bottom_has_water and top_has_water:
+        elif not self.pumping_started_flag and bottom_has_water and top_has_water:
             return self.ENGAGE_PUMP
 
-        elif pumping_started and bottom_has_water:
+        elif self.pumping_started_flag and bottom_has_water:
             return self.ENGAGE_PUMP
 
         else:
             self.debug.print_debug("controller","UNKNOWN STATE: bottom has water %s, top has water %s, pumping_started %s"
-                                   % (str(bottom_has_water), str(top_has_water), str(pumping_started)))
+                                   % (str(bottom_has_water), str(top_has_water), str(self.pumping_started_flag)))
             return self.UNKNOWN
 
     # This is the main pumping logic method
     def check_water_level_state(self):
         self.error_string = "No Error"  # If an error is generated, the error string only lasts for one call
-        self.debug.print_debug("controller","check_state: pump_state[%s], pumping_started_flag[%s], pumping_verified[%s]" %
-                               (self.pump_state, self.pumping_started_flag, self.pumping_verified_flag))
+        self.debug.print_debug("controller","check_state: pump_state[%s], last_pump_state[%s], pumping_started_flag[%s], pumping_verified[%s]" %
+                               (self.pump_state, self.last_pump_state, self.pumping_started_flag, self.pumping_verified_flag))
 
         if self.pump_state is None:
             self.pump.pump_off()
@@ -154,35 +148,34 @@ class PumpingController:
             self.idle_timer.start_timer(self.seconds_between_pumping_status_to_remote)
             self.need_to_send_remote_pumping_started = False
             return self.set_and_return_state(self.IDLE)
-        # elif self.pump_state  == self.IDLE:
-        #     self.pump.pump_off()
-        #     self.pumping_started_flag = False
-        #     self.pumping_verified_flag = False
 
         # Timer starts when pumping starts.
         # Timer canceled as soon as the pumping verification happens
         if self.timer.is_timed_out():
             self.debug.print_debug("controller","TIMED OUT. Elapsed: " + self.timer.get_elapsed())
-            self.stop_pumping(self.PUMPING_TIMED_OUT)
-            self.remote_notifier.http.do_error_post("TIMED OUT", "Elapsed: " + self.timer.get_elapsed())
-            self.timer.cancel_timer()
-            self.display.display_remote("timeout")
-            self.remote_notifier.missed_pumping_verification(self.pump_state)
-            # TEMP code, not sure what to do after a timeout
-            # For now reset, set last_state to idle and return
-            # The calling loop will re-evaluate automatically
             self.pump.pump_off()
+            if self.pumping_verified_flag:
+                # Have verification but pumping didn't finish on time so send pumping timeout
+                self.display.display_remote("pumping timeout")
+                self.remote_notifier.http.do_error_post("Pumping TIMED OUT", "Elapsed: " + self.timer.get_elapsed())
+                self.remote_notifier.pumping_timout(self.pump_state,
+                                            {"pumping_started_flag": str(self.pumping_started_flag),
+                                                       "pumping_verified_flag": str(self.pumping_verified_flag)})
+            else:
+                # Haven't gotten pumping verification so send verification timeout
+                self.display.display_remote("verification timeout")
+                self.remote_notifier.http.do_error_post("PUMPING TIMED OUT", "Elapsed: " + self.timer.get_elapsed())
+                self.remote_notifier.missed_pumping_verification(self.pump_state)
+
+            self.need_to_send_remote_pumping_started = False # Gets set when pumping_verified_flag gets set
             self.pumping_started_flag = False
             self.pumping_verified_flag = False
-            self.need_to_send_remote_pumping_started = False
+            self.timer.cancel_timer()
             return self.set_and_return_state(self.IDLE)
-            # return self.handle_remote_response(self.PUMPING_TIMED_OUT,
-            #                                    self.remote_notifier.missed_pumping_verification(self.pump_state))
 
         # After remote status and timer check, it's time to read the water levels
         # and see if we need to change state, i.e. start or stop pump
-        water_level_state = self.get_water_state(self.pumping_started_flag, self.pumping_verified_flag)
-        # self.debug.print_debug("controller","water_level_state "+water_level_state)
+        water_level_state = self.get_water_state_action()
 
         # If we get weird, bogus reading and water level state can't be computed, then return to try again
 
@@ -229,32 +222,28 @@ class PumpingController:
             #            The timeout default is 5 minutes.
             elif not self.pumping_verified_flag and \
                     self.pump_state == self.ENGAGE_PUMP and water_level_state == self.PUMPING_VERIFIED:
-                # When we get the pumping verification, turn off timer (we don't need it anymore)
-                self.timer.cancel_timer()
                 self.pumping_verified_flag = True
                 # Only send a pump event notification to remote only if pumping_verified
                 self.need_to_send_remote_pumping_started = True
+                # Finishing the pumping is a timed event that starts when pumping verified
+                self.timer.reset_timer(self.seconds_to_pump_before_timeout)
                 # We didn't stop pump, we are still pumping, return that the verification state has been reached
-                # self.blink()
                 return self.set_and_return_state(self.PUMPING_VERIFIED)
 
-            # If we haven't started pumping and the last pump state is READY_TO_PUMP and
-            # the top water measurement sensor has water, start pumping
-            # It's possible to turn on and start pumping.
+            # It's possible to start pumping on startup if water level full
             # If last pump state is IDLE, and we have water, then also start pumping
             elif ((self.pump_state == self.IDLE or self.pump_state == self.READY_TO_PUMP)
                   and water_level_state == self.ENGAGE_PUMP):
                 # When we start pumping, then start pumping verification timer
                 self.timer.start_timer(self.seconds_to_wait_for_pumping_verification)
-
                 # Drop through and start pumping
 
-            # In pumping state
-            # Only blink when pumping
+            if self.pump_start_time is None:
+                self.pump_start_time = time.monotonic()
+
             self.pumping_started_flag = True
             self.pump.pump_on()
             self.idle_timer = Timer()
-            # self.blink()
             return self.set_and_return_state(self.ENGAGE_PUMP)
         except Exception as e:
             self.error_string = str(format_exception(e))
@@ -277,17 +266,21 @@ class PumpingController:
                     return
                 self.need_to_send_remote_pumping_started = False
                 self.idle_timer.reset_timer(self.seconds_between_pumping_status_to_remote)
+                self.last_pump_elapsed_time = time.monotonic() - self.pump_start_time
+                self.pump_start_time = None
+                self.pump_event_count += 1
                 self.last_remote_cmd = self.ENGAGE_PUMP
                 self.display.display_remote("pump event")
                 did_remote_display = True
-                return self.handle_remote_response(self.ENGAGE_PUMP,
-                                                   self.remote_notifier.pump_event(self.ENGAGE_PUMP))
+                self.timer.cancel_timer()
+                self.remote_notifier.pump_event(self.ENGAGE_PUMP,
+        {"last_pump_elapsed_time": self.last_pump_elapsed_time,"pump_event_count": self.pump_event_count})
 
             if self.idle_timer.start_time is None or self.idle_timer.is_timed_out():
                 # Don't flood the server with pumping status
                 self.idle_timer.start_timer(self.seconds_between_pumping_status_to_remote)
                 try:
-                    # At the start of very loop event, check-in with remote in case it wants to change our state
+                    # At the start of every idle event, check-in with remote in case it wants to change our state
                     # Plus let them know our current state, so the remote can validate our current state
                     # NOTE: All remote_cmd command must be ACKed to ensure communication is healthy.
                     #       After ack is received on remote, it goes into idle state waiting for normal status processing
@@ -312,31 +305,17 @@ class PumpingController:
                         #       if the water level measurements trigger the pump.
                         # This is like a reset. There is no "permanent" stop pumping.
                         self.stop_pumping(self.PUMPING_CANCELED)
-                        return (
-                            self.handle_remote_response(
-                                self.PUMPING_CANCELED,
-                                self.remote_notifier.send_pumping_canceled_ack(self.pump_state)))
+                        self.remote_notifier.send_pumping_canceled_ack(self.pump_state)
                     elif remote_cmd == self.START_PUMPING:
                         # For what ever reason, the remote can turn on pump
                         # This has not been tested to see if this code will handle gracefully
                         self.pump_state = self.ENGAGE_PUMP
                         self.pump.pump_on()
-                        return self.handle_remote_response(
-                            self.PUMPING_STARTED,
-                            self.remote_notifier.send_start_pumping_ack(self.pump_state))
-                    elif remote_cmd == self.STOP_PUMPING:
-                        # Remote can signal to stop pumping at anytime
-                        # NOTE: Both sides go into idle and this side will start pumping again
-                        #       if the water level measurements trigger the pump.
-                        # This is like a reset. There is no "permanent" stop pumping.
-                        self.stop_pumping(self.STOP_PUMPING)
-                        self.pump_state = self.IDLE
-                        return self.handle_remote_response(
-                            self.PUMPING_STOPPED,
-                            self.remote_notifier.send_stop_pumping_ack(self.pump_state))
+                        self.remote_notifier.send_start_pumping_ack(self.pump_state)
                 except Exception as e:
-                    print("WARNING: Remote communication failed. Error: %s" % str(format_exception(e)))
                     self.remote_notifier.http.do_error_post("status handshake", str(format_exception(e)))
+                    self.display.display_error(["Error sending to remote. ",str(e)])
+                    self.debug.print_debug("controller", "WARNING: Remote communication failed. Error: %s" % str(format_exception(e)))
 
         elif (self.last_remote_cmd != self.READY_TO_PUMP and
               (self.last_pump_state != self.READY_TO_PUMP and self.pump_state == self.READY_TO_PUMP)):
@@ -346,7 +325,7 @@ class PumpingController:
             self.last_remote_cmd = self.READY_TO_PUMP
             self.display.display_remote("ready to pump")
             did_remote_display = True
-            return self.handle_remote_response(self.READY_TO_PUMP,
+            self.handle_remote_response(self.READY_TO_PUMP,
                                                self.remote_notifier.send_ready_to_pump(self.pump_state))
 
         # elif self.last_remote_cmd != self.PUMPING_VERIFIED and self.pump_state == self.PUMPING_VERIFIED:

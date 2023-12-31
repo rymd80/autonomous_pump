@@ -122,7 +122,7 @@ class PumpingDisplay:
         self.display.root_group = main_group
 
     def display_messages(self, messages: list[str]):
-        self.debug.print_debug("display","**** display_message_page")
+        self.debug.print_debug("display","**** display_message_page"+",".join(messages))
 
         main_group = self.initialize_display(True)
 
@@ -139,29 +139,21 @@ class PumpingDisplay:
             y += 20
 
         self.display.show(main_group)
-    def display_error(self, error):
-        self.debug.print_debug("display","**** display_error: " + error)
+    def display_error(self, messages: list[str]):
+        self.debug.print_debug("display","**** display_error "+",".join(messages))
 
         main_group = self.initialize_display(True)
 
-        text_area = label.Label(terminalio.FONT, scale=2, text="***ERROR***", color=0xFFFFFF, x=8, y=8)
+        text_area = label.Label(terminalio.FONT, scale=2, text="***ERROR***", color=0xfa7e1e, x=8, y=20)
         main_group.append(text_area)
 
-        y = 18
-        x = 17
-        count = 0
-        offset = 0
-        width = 18
-
-        while count < 5 and offset < len(error):
-            end = min([offset + width, len(error)])
-            start = max([0, offset - 1])
-            # print(f"offset {offset} end {end} {error[start:end]}")
-            count += 1
-            text_area = label.Label(terminalio.FONT, scale=2, text=error[start:end], color=0xFFFFFF, x=x, y=y)
+        y = 40
+        for message in messages:
+            if y > 120: # Allow display of 5 message lines to avoid going off page
+                break
+            text_area = label.Label(terminalio.FONT, scale=2, text=message, color=0x74d600, x=8, y=y)
             main_group.append(text_area)
-            y += 10
-            offset += width + 1
+            y += 20
 
         self.display.root_group = main_group
 

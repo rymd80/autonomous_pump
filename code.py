@@ -12,6 +12,9 @@ from util.pump_motor_controller import PumpMotorController
 from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 
+have_sent_startup_notification = False
+startup_notification_timer = None
+
 debug = Debug()
 debug.print_debug("code","CircuitPython version " + str(os.uname().version))
 debug.check_debug_enable()
@@ -58,6 +61,22 @@ if not pumping.remote_notifier.http.success(hello_response):
 display_timer = Timer()
 
 while True:
+    if not have_sent_startup_notification:
+        # Only send startup notification once
+        # This will keep attempting the notification every 30 seconds until successful
+        if pumping.remote_notifier.http.last_http_status_success():
+            if startup_notification_timer is None or startup_notification_timer.is_timed_out():
+                display.display_remote("startup notification")
+                response = pumping.remote_notifier.send_startup_notification(properties.defaults)
+                if pumping.remote_notifier.http.success(response):
+                    have_sent_startup_notification = True
+                else:
+                    # Only attempt to send startup notification every 30 seconds
+                    startup_notification_timer = Timer()
+                    startup_notification_timer.start_timer(30)
+        else:
+            debug.print_debug("code", "Didn't sent startup remote notification due to http error")
+
     this_address = pumping.remote_notifier.http.ip_address
     button_value = buttons.button_pushed()
     if button_value >= 0:
@@ -65,6 +84,8 @@ while True:
             debug.print_debug("code", "button 0 pressed -- set remote status")
             display.display_remote("status")
             pumping.remote_notifier.send_status_handshake(pumping.pump_state, pumping.create_status_object())
+            # Reset idle timer to not send another status for seconds_between_pumping_status_to_remote seconds
+            pumping.idle_timer.reset_timer(pumping.seconds_between_pumping_status_to_remote)
         elif button_value ==1:
             debug.print_debug("code", "button 1 pressed -- turn pump on for 10 seconds")
             display.display_messages(["pump on"])
@@ -94,9 +115,6 @@ while True:
     try:
         pumping.check_water_level_state()
 
-        debug.print_debug("code", "pump_state "+pumping.pump_state)
-        debug.print_debug("code", "last_pump_state "+str(pumping.last_pump_state))
-
         if pumping.pump_state is pumping.ENGAGE_PUMP and  pumping.last_pump_state is pumping.PUMPING_VERIFIED:
             debug.print_debug("code", "Setting : pump_start_time")
             pump_start_time = time.monotonic()
@@ -116,18 +134,17 @@ while True:
 
         sleep_time = properties.defaults["sleep_time"]
         if sleep_time <1:
-            sleep_time = .5
-        elif sleep_time > 10:
-            sleep_time = 10
+            sleep_time = .2
+        elif sleep_time > 5:
+            sleep_time = 5
         time.sleep(sleep_time)
 
     except Exception as e:
         # error = pumping.remote_notifier.http.str(format_exception(e))
         error = str(format_exception(e))
-        print(error)
         pumping.remote_notifier.http.do_error_post("MAIN LOOP", "Error: " + error)
         debug.print_debug("code","Exception in main: "+error)
-        display.display_error(error)
+        display.display_error(["Exception in main",str(e)])
         pumping_state = "error"
         time.sleep(10)
         # display.display_status(this_address, pumping_state, program_start_time, pump_start_time, water_level_readers,

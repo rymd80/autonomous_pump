@@ -10,6 +10,7 @@ class Debug:
 
     def check_debug_enable(self):
         if self.local_set:
+            # Used to turn on/off debug via button
             return self.debug
 
         files_in_dir = os.listdir()
