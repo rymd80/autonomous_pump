@@ -33,6 +33,7 @@ if [[ -n "$MOUNT_POINT" ]]; then
   echo "CIRCUITPY mounted at $MOUNT_POINT"
   COUNTER=0
   while IFS= read -r file; do
+    ((++COUNTER))
     copy_updated_files "$file"
   done < <(find . -type f -name "*.py")
   echo "$COUNTER files copied"

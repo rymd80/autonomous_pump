@@ -26,7 +26,7 @@ class WaterLevelReader:
         # If the float is not floating, there will be a value, which means it's dry.
         # If the float is floating, there will not be a value which means it's wet.
         # self.debug.print_debug(self.name + " value "+str(self.water_level_sensor.value)
-        return self.DRY if self.water_level_sensor.value else self.WET
+        return self.WET if self.water_level_sensor.value else self.DRY
 
     def water_present(self):
         water_present = self.get_water_state() != self.DRY
