@@ -5,14 +5,11 @@ class Debug:
 
     def __init__(self):
         self.debug = False
-        self.local_set = False
+        self.remote_set = False
         self.check_debug_enable()
+        self.remote_lines = []
 
     def check_debug_enable(self):
-        if self.local_set:
-            # Used to turn on/off debug via button
-            return self.debug
-
         files_in_dir = os.listdir()
         a_debug = "debug" in files_in_dir
         if a_debug != self.debug:
@@ -24,16 +21,26 @@ class Debug:
         self.debug = a_debug
         return a_debug
 
-    def toggle_local_debug(self):
-        self.local_set = not self.local_set
-        if self.local_set:
-            self.debug = True
-        # When local_set is false, debug flag will be set by presence of the debug file.
-        self.check_debug_enable()
+    def toggle_remote_debug(self,new_value:bool=None):
+        if new_value is None:
+            self.remote_set = not self.remote_set
+        else:
+            self.remote_set = new_value
 
     def debug_enabled(self):
         return self.debug
 
     def print_debug(self, caller, message):
+        # if self.remote_set:
+        debug_line = "[" + '%-10s' % caller + "] "+ message
         if self.debug:
-            print("[" + '%-10s' % caller + "] "+ message)
+            print(debug_line)
+
+        if self.remote_set:
+            self.remote_lines.append(debug_line)
+
+    def clear_remote_lines(self):
+        self.remote_lines = []
+
+    def get_remote_lines(self):
+        return self.remote_lines

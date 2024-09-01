@@ -15,6 +15,8 @@ import wifi
 from util.debug import Debug
 from util.properties import Properties
 from util.common import CommonFunctions
+from util.simple_timer import Timer
+
 
 class HttpFunctions:
     def __init__(self, properties: Properties, debug: Debug):
@@ -33,6 +35,8 @@ class HttpFunctions:
         self.need_to_connect = True
         self.last_action = None
         self.remote_cmd = None
+        self.error_timer = Timer()
+
         # dies early if ysou can't connect to Wi-Fi, sets ip_address if connected
 
         # If SocketPool wasn't successful, don't bother with hello
@@ -40,7 +44,11 @@ class HttpFunctions:
         self.get_pool()
 
     def last_http_status_success(self):
-        if self.last_status_code >= 200 and self.last_status_code < 300:
+        if (self.last_status_code >= 200 and self.last_status_code < 300) or self.error_timer.is_timed_out():
+            if self.error_timer.is_timed_out():
+                # Goal here is to keep trying to do http every 30 seconds after an error
+                # A connect && pianf success cancels the error timer.
+                self.error_timer.reset_timer(60)
             return True
         self.debug.print_debug("-->http", "last_http_status_success error: " + self.last_error)
         return False
@@ -48,8 +56,11 @@ class HttpFunctions:
     def success(self, response):
         if response is not None and "status_code" in response:
             if response["status_code"] >= 200 and response["status_code"] < 300:
+                self.error_timer.cancel_timer()
                 return True
             #return 200 >= response["status_code"] < 300
+
+        self.error_timer.start_timer(60)
         return False
     def get_pool(self):
         tries = 0
@@ -81,11 +92,11 @@ class HttpFunctions:
                 self.need_to_connect = True
                 self.last_error = "No Pool"
                 self.last_status_code = 0
+                self.error_timer.start_timer(30)
                 return
 
             self.debug.print_debug("-->http","Connecting to WiFi...")
             try:
-
                 self.requests = adafruit_requests.Session(self.pool, ssl.create_default_context())
                 wifi.radio.connect(os.getenv("CIRCUITPY_WIFI_SSID"), os.getenv("CIRCUITPY_WIFI_PASSWORD"))
                 self.ip_address = str(wifi.radio.ipv4_address)
@@ -101,6 +112,7 @@ class HttpFunctions:
                     }
 
                 self.debug.print_debug("-->http","connect elapsed " + CommonFunctions.format_elapsed_ms(start))
+                self.error_timer.cancel_timer()
                 return
             except ConnectionError as e:
                 tries += 1
@@ -113,6 +125,7 @@ class HttpFunctions:
                 self.debug.print_debug("-->http","Connection Error:"+ self.last_error)
                 time.sleep(2)
                 gc.collect()
+        self.error_timer.start_timer(60)
         self.debug.print_debug("-->http","**ERROR***  Didn't Connect!")
         self.debug.print_debug(self.last_error)
         self.do_error_post("connect", self.last_error)  # This will send self.last_error to remote
@@ -212,7 +225,6 @@ class HttpFunctions:
         else:
             self.event_id = "None"
 
-
     def do_error_post(self, action, error=None):
         if self.requests is None:
             return
@@ -251,6 +263,85 @@ class HttpFunctions:
                 self.process_response(response,"error_post response code: ",tries, start_time)
                 self.transaction_count += 1
                 self.debug.print_debug("-->http","do_error_post elapsed " + CommonFunctions.format_elapsed_ms(start))
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
+            except Exception as e:
+                tries += 1
+                last_exception = e  # Can't be too long for display, may need to truncate
+                self.last_status_code = 0
+                time.sleep(2)
+
+        self.last_error = str(last_exception)  # Can't be too long for display, may need to truncate
+        formatted_exception = str(format_exception(last_exception))
+        self.debug.print_debug("-->http","do_error_post Error -- Error:  " + " error " + formatted_exception)
+        self.need_to_connect = True
+        self.error_count += 1
+        if self.error_count > 200:
+            microcontroller.reset()  # When 200 error threshold is hit, then reboot the device.
+        return {
+            "status_code": 0,
+            "text": "Couldn't send error"
+        }
+
+    def do_debug_log_post(self, log_lines):
+        if self.requests is None or log_lines is None:
+            return {
+                "status_code": 0,
+                "text": "Couldn't do_log_post"
+            }
+        if len(log_lines) <1:
+            # No debug lines, not an error, return success
+            self.debug.print_debug("-->http", "NO LOG LINES.")
+            return {
+                "status_code": 200,
+                "text": ""
+            }
+
+        start = time.monotonic()
+
+        if self.pool is None or self.ip_address is None:
+            self.debug.print_debug("-->http", "No pool, ip address")
+            return {
+                "status_code": 0,
+                "text": "Couldn't do_log_post"
+            }
+
+        # If we can't ping, there is no reason to attempt a POST
+        if not self.ping_default():
+            self.need_to_connect = True
+            self.debug.print_debug("-->http", "Ping failed.")
+            return {
+                "status_code": 0,
+                "text": "Ping Failed"
+            }
+
+        start_time = time.monotonic()
+
+        headers = {'Content-Type': 'application/json'}
+
+        post_body = []
+        if isinstance(log_lines, list):
+            # self.debug.print_debug("-->http", "making post body, "+str(len(log_lines))+" size.")
+            for log_line in log_lines:
+                post_body.append(log_line)
+        else:
+            # self.debug.print_debug("-->http", "making post body, single line.")
+            post_body.append(log_lines)
+
+        url = '{}/component/debug?mission=Pump1Mission'.format(self.remote_url)
+        # self.debug.print_debug("-->http","Debug LOG Post url: " + url)
+        # self.debug.print_debug("-->http","Debug LOG Post body: " + json.dumps(post_body))
+        last_exception = None
+        tries = 0
+        # Wi-Fi can be a little flaky so try a few times before recording an error
+        while tries < 3:
+            try:
+                response = self.requests.post(url=url, headers=headers, data=json.dumps(post_body))
+                self.process_response(response,"do_debug_log_post response code: ",tries, start_time)
+                self.transaction_count += 1
+                # self.debug.print_debug("-->http","do_debug_log_post elapsed " + CommonFunctions.format_elapsed_ms(start))
                 return {
                     "status_code": response.status_code,
                     "text": response.text
@@ -407,7 +498,7 @@ class HttpFunctions:
 
     # Ping host defined in settings.toml
     def ping_default(self):
-        self.ping(os.getenv("PING_IP"))
+        return self.ping(os.getenv("PING_IP"))
 
     # If connect to Wi-Fi successful but ping fails, don't attempt Post or Get
     def ping(self, ip):
@@ -421,6 +512,7 @@ class HttpFunctions:
                 if ping is not None:
                     self.last_status_code = 200
                     self.debug.print_debug("-->http", "Ping SUCCESS ")
+                    self.error_timer.cancel_timer()
                     return True
                 else:
                     tries += 1
@@ -435,6 +527,7 @@ class HttpFunctions:
             # If the connect to Wi-Fi failed, then this will fail as well
             self.debug.print_debug("-->http","ping error "+str(format_exception(e)))
 
+        self.error_timer.start_timer(30)
         return False
 
     def get_response_text(self, response):

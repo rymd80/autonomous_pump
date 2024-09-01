@@ -79,7 +79,7 @@ class PumpingController:
             try:
                 self.error_string = self.remote_notifier.http.get_response_text(remote_response)
             except Exception as e:
-                None
+                pass
             return self.REMOTE_NOTIFIER_ERROR
 
     def stop_pumping(self,pumping_state):
@@ -197,6 +197,11 @@ class PumpingController:
         try:
             # If we've been pumping and the bottom water measurement has no water, stop pumping
             if water_level_state == self.IDLE:
+                if self.pumping_started_flag:
+                    # For now... because of the extra gap between the bottom float and the bottom of the reservoir,
+                    # if we've been pumping, keep pumping for another 30 seconds.
+                    time.sleep(30)
+                # Turn off pump and reset pumping and verification flags
                 self.stop_pumping(self.STOP_PUMPING)
                 return self.set_and_return_state(self.IDLE)
 
@@ -243,7 +248,7 @@ class PumpingController:
 
             self.pumping_started_flag = True
             self.pump.pump_on()
-            self.idle_timer = Timer()
+            self.idle_timer.reset_timer(self.seconds_between_pumping_status_to_remote)
             return self.set_and_return_state(self.ENGAGE_PUMP)
         except Exception as e:
             self.error_string = str(format_exception(e))
@@ -253,16 +258,19 @@ class PumpingController:
     # Handles the high level remote calls to set pumping info the backend
     # The remote call can take some time so the backend calls are timed to avoid interfere with the pumping.
     def notify_remote(self):
-
         did_remote_display = False
         if self.last_pump_state is self.READY_TO_PUMP and self.pump_state == self.IDLE:
             # Can miss notify if state goes from ready back to idle
             self.last_remote_cmd = self.IDLE
 
+        if self.pump_state == self.READY_TO_PUMP:
+            self.check_idle_timer()
+
         if self.pump_state == self.IDLE:
             if (self.need_to_send_remote_pumping_started):
                 # If Ping failed, then no need to do remote command, display error and return
                 if not self.remote_notifier.http.last_http_status_success():
+                    self.debug.print_debug("notify_remote", "not last_http_status_success, returning." )
                     return
                 self.need_to_send_remote_pumping_started = False
                 self.idle_timer.reset_timer(self.seconds_between_pumping_status_to_remote)
@@ -276,46 +284,7 @@ class PumpingController:
                 self.remote_notifier.pump_event(self.ENGAGE_PUMP,
         {"last_pump_elapsed_time": self.last_pump_elapsed_time,"pump_event_count": self.pump_event_count})
 
-            if self.idle_timer.start_time is None or self.idle_timer.is_timed_out():
-                # Don't flood the server with pumping status
-                self.idle_timer.start_timer(self.seconds_between_pumping_status_to_remote)
-                try:
-                    # At the start of every idle event, check-in with remote in case it wants to change our state
-                    # Plus let them know our current state, so the remote can validate our current state
-                    # NOTE: All remote_cmd command must be ACKed to ensure communication is healthy.
-                    #       After ack is received on remote, it goes into idle state waiting for normal status processing
-                    #       If ack is not received within remote timeout period, a notification email or text is sent.
-                    self.display.display_remote("status")
-                    did_remote_display = True
-                    self.last_remote_cmd = "status"
-                    response = self.remote_notifier.send_status_handshake(self.pump_state, self.create_status_object())
-                    # Set timer for next remote status call
-                    self.idle_timer.start_timer(self.seconds_between_pumping_status_to_remote)
-
-                    if hasattr(response, "status_code"):
-                        self.debug.print_debug("controller","remote_cmd return-code " + str(response.status_code) + " text " + self.remote_notifier.http.get_response_text(response))
-
-                    remote_cmd = self.remote_notifier.http.remote_cmd  # remote_cmd is returned in server json.
-
-                    if remote_cmd == self.PUMPING_CANCELED:
-                        # Canceled happens during pumping when pump verification times out on remote,
-                        # and it attempts a stop us.
-                        # This should only happen if there is something wrong with pump, and it's not pumping.
-                        # NOTE: Both sides go into idle and this side will attempt to start pumping again
-                        #       if the water level measurements trigger the pump.
-                        # This is like a reset. There is no "permanent" stop pumping.
-                        self.stop_pumping(self.PUMPING_CANCELED)
-                        self.remote_notifier.send_pumping_canceled_ack(self.pump_state)
-                    elif remote_cmd == self.START_PUMPING:
-                        # For what ever reason, the remote can turn on pump
-                        # This has not been tested to see if this code will handle gracefully
-                        self.pump_state = self.ENGAGE_PUMP
-                        self.pump.pump_on()
-                        self.remote_notifier.send_start_pumping_ack(self.pump_state)
-                except Exception as e:
-                    self.remote_notifier.http.do_error_post("status handshake", str(format_exception(e)))
-                    self.display.display_error(["Error sending to remote. ",str(e)])
-                    self.debug.print_debug("controller", "WARNING: Remote communication failed. Error: %s" % str(format_exception(e)))
+            self.check_idle_timer()
 
         elif (self.last_remote_cmd != self.READY_TO_PUMP and
               (self.last_pump_state != self.READY_TO_PUMP and self.pump_state == self.READY_TO_PUMP)):
@@ -336,3 +305,47 @@ class PumpingController:
         #                                        self.remote_notifier.pumping_confirmed(self.pump_state))
 
         return did_remote_display
+    def check_idle_timer(self):
+        if self.idle_timer.start_time is None or self.idle_timer.is_timed_out():
+            # Don't flood the server with pumping status
+            self.idle_timer.reset_timer(self.seconds_between_pumping_status_to_remote)
+            try:
+                # At the start of every idle event, check-in with remote in case it wants to change our state
+                # Plus let them know our current state, so the remote can validate our current state
+                # NOTE: All remote_cmd command must be ACKed to ensure communication is healthy.
+                #       After ack is received on remote, it goes into idle state waiting for normal status processing
+                #       If ack is not received within remote timeout period, a notification email or text is sent.
+                self.display.display_remote("status")
+                did_remote_display = True
+                self.last_remote_cmd = "status"
+                response = self.remote_notifier.send_status_handshake(self.pump_state, self.create_status_object())
+                # Set timer for next remote status call
+                self.idle_timer.start_timer(self.seconds_between_pumping_status_to_remote)
+
+                if hasattr(response, "status_code"):
+                    self.debug.print_debug("notify_remote", "remote_cmd return-code " + str(
+                        response.status_code) + " text " + self.remote_notifier.http.get_response_text(response))
+
+                remote_cmd = self.remote_notifier.http.remote_cmd  # remote_cmd is returned in server json.
+
+                if remote_cmd == self.PUMPING_CANCELED:
+                    # Canceled happens during pumping when pump verification times out on remote,
+                    # and it attempts a stop us.
+                    # This should only happen if there is something wrong with pump, and it's not pumping.
+                    # NOTE: Both sides go into idle and this side will attempt to start pumping again
+                    #       if the water level measurements trigger the pump.
+                    # This is like a reset. There is no "permanent" stop pumping.
+                    self.stop_pumping(self.PUMPING_CANCELED)
+                    self.remote_notifier.send_pumping_canceled_ack(self.pump_state)
+                elif remote_cmd == self.START_PUMPING:
+                    # For what ever reason, the remote can turn on pump
+                    # This has not been tested to see if this code will handle gracefully
+                    self.pump_state = self.ENGAGE_PUMP
+                    self.pump.pump_on()
+                    self.remote_notifier.send_start_pumping_ack(self.pump_state)
+            except Exception as e:
+                self.remote_notifier.http.do_error_post("status handshake", str(format_exception(e)))
+                self.display.display_error(["Error sending to remote. ", str(e)])
+                self.debug.print_debug("notify_remote",
+                                       "WARNING: Remote communication failed. Error: %s" % str(format_exception(e)))
+

@@ -86,6 +86,7 @@ while True:
             pumping.remote_notifier.send_status_handshake(pumping.pump_state, pumping.create_status_object())
             # Reset idle timer to not send another status for seconds_between_pumping_status_to_remote seconds
             pumping.idle_timer.reset_timer(pumping.seconds_between_pumping_status_to_remote)
+            time.sleep(10)
         elif button_value ==1:
             debug.print_debug("code", "button 1 pressed -- turn pump on for 10 seconds")
             display.display_messages(["pump on"])
@@ -104,8 +105,8 @@ while True:
         elif button_value ==2:
             debug.print_debug("code", "button 2 pressed - toggle debug stage")
             # Toggles debug flag (without reloading program)
-            debug.toggle_local_debug()
-            display.display_messages(["local-debug "+str(debug.local_set),"debug "+str(debug.debug)])
+            debug.toggle_remote_debug()
+            display.display_messages(["remote-debug "+str(debug.remote_set),"debug "+str(debug.debug)])
             time.sleep(5)
         display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
                                program_start_time, pump_start_time, water_level_readers)
@@ -113,6 +114,9 @@ while True:
     loop_count += 1
     debug.check_debug_enable()
     try:
+        if loop_count % 5 is 0:
+            pumping.remote_notifier.send_debug_logs_to_remote()
+
         pumping.check_water_level_state()
 
         if pumping.pump_state is pumping.ENGAGE_PUMP and  pumping.last_pump_state is pumping.PUMPING_VERIFIED:
@@ -124,6 +128,7 @@ while True:
                                    program_start_time, pump_start_time, water_level_readers)
             display_timer.start_timer(properties.defaults["display_interval"])
 
+        # notify_remote sends messages to remote
         if pumping.notify_remote():
             display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
                                    program_start_time, pump_start_time, water_level_readers)

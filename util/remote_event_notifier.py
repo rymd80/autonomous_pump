@@ -82,3 +82,7 @@ class RemoteEventNotifier:
         self.debug.print_debug("remote","missed_pumping_verification")
         return self.http.do_post("missed_pumping_verification", pump_state, "None")
 
+    def send_debug_logs_to_remote(self):
+        #  self.debug.print_debug("remote","\n***** send_logs_to_remote. Number of log lines: "+str(len(self.debug.get_remote_lines()))+"\n")
+        self.http.do_debug_log_post(self.debug.get_remote_lines())
+        self.debug.clear_remote_lines()
