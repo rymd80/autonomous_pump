@@ -255,7 +255,7 @@ class PumpingController:
             self.remote_notifier.http.do_error_post("check_water_level_state", str(e))
             return self.REMOTE_NOTIFIER_ERROR
 
-    # Handles the high level remote calls to set pumping info the backend
+    # Handles the high level remote calls to send pumping info to the backend
     # The remote call can take some time so the backend calls are timed to avoid interfere with the pumping.
     def notify_remote(self):
         did_remote_display = False
