@@ -5,6 +5,7 @@ import board
 import digitalio
 
 from util.debug import Debug
+from util.http_functions import get_response_text
 from util.properties import Properties
 from util.pump_motor_controller import PumpMotorController
 from util.remote_event_notifier import RemoteEventNotifier
@@ -12,13 +13,12 @@ from util.simple_timer import Timer
 from util.water_level import WaterLevelReader
 from util.pumping_display import PumpingDisplay
 
+# Variables to help keep track of which water level sensor is the top and which to bottom.
 bottom = 0
 top = 1
 
-
 def get_pumping_id():
     return str(int(time.time() * 1000))
-
 
 class PumpingController:
     IDLE = "idle"
@@ -77,7 +77,7 @@ class PumpingController:
             # If water level is high enough, it will again try to pump.
             self.stop_pumping(self.REMOTE_NOTIFIER_ERROR)
             try:
-                self.error_string = self.remote_notifier.http.get_response_text(remote_response)
+                self.error_string = get_response_text(remote_response)
             except Exception as e:
                 pass
             return self.REMOTE_NOTIFIER_ERROR
@@ -200,7 +200,7 @@ class PumpingController:
                 if self.pumping_started_flag:
                     # For now... because of the extra gap between the bottom float and the bottom of the reservoir,
                     # if we've been pumping, keep pumping for another 30 seconds.
-                    time.sleep(30)
+                    time.sleep(20)
                 # Turn off pump and reset pumping and verification flags
                 self.stop_pumping(self.STOP_PUMPING)
                 return self.set_and_return_state(self.IDLE)
@@ -324,7 +324,7 @@ class PumpingController:
 
                 if hasattr(response, "status_code"):
                     self.debug.print_debug("notify_remote", "remote_cmd return-code " + str(
-                        response.status_code) + " text " + self.remote_notifier.http.get_response_text(response))
+                        response.status_code) + " text " + get_response_text(response))
 
                 remote_cmd = self.remote_notifier.http.remote_cmd  # remote_cmd is returned in server json.
 

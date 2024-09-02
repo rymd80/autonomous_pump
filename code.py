@@ -133,8 +133,10 @@ while True:
             display.display_status(this_address, pumping.pump_state, pumping.remote_notifier,
                                    program_start_time, pump_start_time, water_level_readers)
 
-        # If http failed, then ping again to attempt to reset http error
+        # If http failed, then ping again to attempt to reset http error and start communicating again with remote.
         if not pumping.remote_notifier.http.last_http_status_success():
+            # This is an important call. Continued ping failure will lead to a device reboot to attempt to re-enable
+            # the device http functionality.
             pumping.remote_notifier.http.ping_default()
 
         sleep_time = properties.defaults["sleep_time"]
