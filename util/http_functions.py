@@ -82,6 +82,7 @@ class HttpFunctions:
                 self.last_error = error
 
                 self.error_count = 0
+                self.last_status_code = response.status_code
                 return {
                     "status_code": 0,
                     "text": "Get: "+caller_id+" Unknown response. type: " + type(response) + " - dir: ".join(dir(response))
@@ -141,6 +142,7 @@ class HttpFunctions:
 
                     self.process_response(response,"get return code ", tries, start_time)
                     self.transaction_count += 1
+                    self.last_status_code = response.status_code
                     return {
                         "status_code": response.status_code,
                         "text": response.text
@@ -156,7 +158,7 @@ class HttpFunctions:
 
             except Exception as e:
                 error = str(format_exception(e))
-                self.debug.print_debug("-->http","POST Error "+caller_id+". Error: "+error)
+                # self.debug.print_debug("-->http","POST Error "+caller_id+". Error: "+error)
                 tries += 1
                 last_exception = e  # Can't be too long for display, may need to truncate
                 self.last_status_code = 0
@@ -165,8 +167,8 @@ class HttpFunctions:
 
         self.last_error = str(last_exception)  # Can't be too long for display, may need to truncate
         formatted_exception = str(format_exception(last_exception))
-        self.debug.print_debug("-->http", "do_post Error "+caller_id+". Error: " + formatted_exception)
-        self.do_error_post("post", formatted_exception)
+        self.debug.print_debug("-->http", "do_post "+caller_id+". Failed")
+        self.do_error_post("post", formatted_exception)#Since post failed, this may fail as well, but try anyway
         self.need_to_connect = True
         self.error_count += 1
         if self.error_count > 20:
@@ -198,7 +200,7 @@ class HttpFunctions:
         # eventid = str(uuid.uuid4())
         url = '{}/component/mission?mission=Pump1Mission'.format(self.remote_url)
 
-        return self.do_post(url, headers, post_body,"debug_log_post")
+        return self.do_post(url, headers, post_body,"debug_action_post")
 
     # ***********************
     def do_debug_log_post(self, log_lines):
@@ -231,16 +233,67 @@ class HttpFunctions:
         return self.do_post(url, headers, post_body,"debug_log_post")
 
     # ***********************
+    # It's important that this doesn't call do_post because it causes an infinite loop.
     def do_error_post(self, action, error=None):
+        if self.requests is None:
+            return
+
+        start = time.monotonic()
+
+        if self.pool is None or self.ip_address is None:
+            self.debug.print_debug("*http*","do_error_post no connection")
+            return {
+                "status_code": 0,
+                "text": "Couldn't do_error_post"
+            }
+
+        # If we can't ping, there is no reason to attempt a POST
+        if not self.ping_default():
+            self.need_to_connect = True
+            return {
+                "status_code": 0,
+                "text": "Ping Failed"
+            }
+
+        start_time = time.monotonic()
 
         headers = {'Content-Type': 'application/json'}
         post_body = {"type": "error", "eventId": self.event_id, "componentId": "1",
                      "action": action,
                      "errorCount": str(self.error_count), "lastError": error}
         url = '{}/component/error?mission=Pump1Mission'.format(self.remote_url)
+        self.debug.print_debug("-->http","Post url: " + url)
+        last_exception = None
+        tries = 0
+        # Wi-Fi can be a little flaky so try a few times before recording an error
+        while tries < 3:
+            try:
+                response = self.requests.post(url=url, headers=headers, data=json.dumps(post_body))
+                self.process_response(response,"error_post response code: ",tries, start_time)
+                self.transaction_count += 1
+                self.debug.print_debug("-->http","do_error_post elapsed " + CommonFunctions.format_elapsed_ms(start))
+                self.last_status_code = response.status_code
+                return {
+                    "status_code": response.status_code,
+                    "text": response.text
+                }
+            except Exception as e:
+                tries += 1
+                last_exception = e  # Can't be too long for display, may need to truncate
+                self.last_status_code = 0
+                time.sleep(2)
 
-        return self.do_post(url, headers, post_body,"error_post")
-
+        self.last_error = str(last_exception)  # Can't be too long for display, may need to truncate
+        formatted_exception = str(format_exception(last_exception))
+        self.debug.print_debug("-->http","do_error_post Error -- Error:  " + " error " + formatted_exception)
+        self.need_to_connect = True
+        self.error_count += 1
+        if self.error_count > 200:
+            microcontroller.reset()  # When 200 error threshold is hit, then reboot the device.
+        return {
+            "status_code": 0,
+            "text": "Couldn't send error"
+        }
     # ***********************
     # Support functions
     # ***********************
@@ -318,7 +371,10 @@ class HttpFunctions:
 
                 self.debug.print_debug("-->http","connect elapsed " + CommonFunctions.format_elapsed_ms(start))
                 self.error_timer.cancel_timer()
-                return
+                return {
+                    "status_code": 200,
+                    "text": "Ping Success"
+                }
             except ConnectionError as e:
                 tries += 1
                 self.ip_address = None
