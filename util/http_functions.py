@@ -198,7 +198,7 @@ class HttpFunctions:
         # eventid = str(uuid.uuid4())
         url = '{}/component/mission?mission=Pump1Mission'.format(self.remote_url)
 
-        return self.do_post(url, headers, post_body,"debug_log_post")
+        return self.do_post(url, headers, post_body,"debug_action_post")
 
     # ***********************
     def do_debug_log_post(self, log_lines):
